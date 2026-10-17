@@ -1,17 +1,17 @@
-"finger(1=left when viewed from copper side, tail up)",channel,electrode_index,electrode_pos_mm,lane
-1,COL00,0,21.74,8
-2,COL01,1,33.74,7
-3,COL02,2,45.74,6
-4,COL03,3,57.74,5
-5,COL04,4,69.74,4
-6,COL05,5,81.74,3
-7,COL06,6,93.74,2
-8,COL07,7,105.74,1
-9,COL08,8,117.74,0
-10,COL09,9,129.74,0
-11,COL10,10,141.74,1
-12,COL11,11,153.74,2
-13,NC (dummy finger),,,
-14,NC (dummy finger),,,
-15,NC (dummy finger),,,
-16,NC (dummy finger),,,
+J1 pin,channel,electrode_index,electrode_pos_mm,lane,via_row
+1,COL00,0,24.50,9,A
+2,COL01,1,36.50,8,B
+3,COL02,2,48.50,7,A
+4,COL03,3,60.50,6,B
+5,COL04,4,72.50,5,A
+6,COL05,5,84.50,4,B
+7,COL06,6,96.50,3,A
+8,COL07,7,108.50,2,B
+9,COL08,8,120.50,1,A
+10,COL09,9,132.50,0,B
+11,COL10,10,144.50,0,A
+12,COL11,11,156.50,1,B
+13,NC,,,,
+14,NC,,,,
+15,NC,,,,
+16,NC,,,,

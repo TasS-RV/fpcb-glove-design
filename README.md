@@ -129,31 +129,44 @@ What is kept from the glove design (Sec. 3.1 of the paper):
 What is different, because the pads are large and bend gently:
 
 - electrodes are 3 mm strips instead of 0.1 mm lines, so each ~12-13 mm taxel has a real contact area;
-- traces are 0.25 mm wide (the paper found wider traces more than double the bend life);
-- each board ends in a 0.5 mm-pitch ZIF finger tail (16 fingers, 0.3 x 4 mm, 9 mm wide tail, stiffener
-  outline on `Eco2.User`) instead of a connector on the flex, so there are no vias and the boards are 1-layer.
-  The Front and Back tails sit 14 mm apart so both can plug into ZIFs on one readout board. Front fingers face
-  the copper (top) side, Back fingers the bottom side: use a top-contact and a bottom-contact 16-pin ZIF, or
-  a dual-contact one.
+- traces are 0.25 mm wide (the paper found wider traces more than double the bend life).
+
+The tail is built the way Step 5 describes for the glove, but automatically: every trace ends in a through
+via (0.45 mm pad / 0.2 mm drill, two staggered rows) and a 16-pin 0.5 mm FFC connector (KiCad library
+footprint `Connector_FFC-FPC:Hirose_FH12-16S-0.5SH_1x16-1MP_P0.50mm_Horizontal`, swap it in `Params` if you use
+another part) sits on the side opposite the electrodes, so the boards are 2-layer like the glove. Between the
+0.5 mm bus and the 1.0 mm via pitch the traces run through a nested staircase (no crossings) on each side. The
+Front and Back tails sit 21 mm apart; the Front connector faces down (B.Cu), the Back connector faces up
+(F.Cu), i.e. both face outward when the boards are stacked.
 
 | pad | body (mm) | columns x rows | taxels | board incl. tail (mm) |
 |---|---|---|---|---|
-| forearm | 198 x 216 | 14 x 15 | 184 | 198 x 230 |
-| bicep | 228 x 215 | 14 x 14 | 188 | 228 x 229 |
-| chest_left / chest_right | 165 x 193 each | 12 x 14 | 136 each | 166 x 207 |
+| forearm | 198 x 216 | 14 x 15 | 186 | 198 x 237 |
+| bicep | 228 x 215 | 15 x 14 | 192 | 228 x 236 |
+| chest_left / chest_right | 165 x 193 each | 12 x 14 | 132 each | 166 x 213 |
 
-Per pad, `body_pads/out/<pad>/` contains the Front/Back SVGs (same layer groups as `handFront.svg`, so
-`create_kicad_mod()` in the notebook accepts them), the svg2mod `.kicad_mod` footprints, complete
-`.kicad_pcb` boards, `gerbers_Front/` and `gerbers_Back/` (+ `.zip`) plotted with `kicad-cli`, an Excellon
-drill file (empty - no holes), `pinout_*.csv` (finger -> electrode), `<pad>_cut_template.svg` (mm units, body
-outline + cut-outs for the Velostat and silicone), `<pad>_preview.png` and `summary.json` with the clearance
-checks (copper-copper >= 0.2 mm at the fingers / 0.25 mm elsewhere, copper-edge 0.6 mm, copper-cut 1.0 mm).
+`make_body_pads.py` writes the electrode-side geometry itself, then calls `body_pads/kicad_post.py` with
+KiCad's bundled Python (`…\KiCad\10.0\bin\python.exe`) to add the vias, the connector footprint, the
+connector-side tracks and the nets, and finally `kicad-cli` to plot and check. Per pad, `body_pads/out/<pad>/`
+contains:
 
-Ordering notes (PCBWay flex quote, as in Step 6): 1 layer, 0.08-0.11 mm polyimide, rolled-annealed copper,
-coverlay with openings per the mask layer, PSA tape on the copper side in the `Eco1.User` area, polyimide
-stiffener under the tail per `Eco2.User` to a finished tail thickness of 0.30 +/- 0.05 mm, ENIG or hard gold
-on the tail fingers (bare copper elsewhere is fine). KiCad DRC reports "solder mask bridges" between the
-electrodes - that is the sensing opening and is intended.
+- `<pad>_Front.svg` / `_Back.svg` - same layer groups as `handFront.svg` (the notebook's `create_kicad_mod()`
+  accepts them) and the svg2mod `.kicad_mod` footprints, electrode side only;
+- `<pad>_Front.kicad_pcb` / `_Back.kicad_pcb` + `.kicad_pro` (flex design rules) - the complete boards;
+- `gerbers_Front/`, `gerbers_Back/` (+ `.zip`) - the same file set as the glove: `F_Cu`, `B_Cu`, `F_Mask`,
+  `B_Mask`, `F_Paste`, `B_Paste`, `F_Silkscreen`, `B_Silkscreen`, `Edge_Cuts`, `User_Eco1` (adhesive),
+  `User_Eco2` (stiffener), `PTH.drl` (vias), `NPTH.drl`, drill maps and the `.gbrjob`;
+- `pinout_*.csv` (J1 pin -> electrode), `<pad>_cut_template.svg` (mm units, body outline + cut-outs for the
+  Velostat and silicone), `<pad>_preview.png`, `<pad>_tail.png`, `drc_*.json` and `summary.json`.
+
+Checks: shapely clearances (copper-copper >= 0.25 mm on traces, 0.2 mm at the connector pads, copper-edge
+>= 0.5 mm, copper-cut 1.0 mm) and `kicad-cli pcb drc` with the flex rules in the `.kicad_pro` - both must be
+clean. Mask bridges between electrodes are the sensing opening and are ignored in the DRC.
+
+Ordering notes (PCBWay flex quote, as in Step 6): 2 layers, 0.08-0.11 mm polyimide, rolled-annealed copper,
+coverlay with openings per the mask layers, PSA tape on the electrode side in the `Eco1.User` area, polyimide
+stiffener under the connector per `Eco2.User` (on the electrode side of the tail), surface finish only needed
+on the connector pads.
 
 ## Known Issues
 

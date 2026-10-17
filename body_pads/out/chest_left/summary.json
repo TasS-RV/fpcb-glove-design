@@ -12,30 +12,48 @@
     "cut_r": 2.0,
     "cut_margin": 2.5,
     "max_ch": 16,
-    "tail_len": 14.0,
-    "tail_w": 9.0,
-    "finger_w": 0.3,
-    "finger_pitch": 0.5,
-    "finger_len": 4.0,
-    "finger_tip_gap": 0.6,
-    "tail_tip_r": 0.5,
-    "stiffener_len": 8.0,
-    "tail_sep": 14.0,
-    "edge_clear": 0.5
+    "edge_clear": 0.5,
+    "tail_w": 17.0,
+    "tail_tip_r": 1.0,
+    "tail_tip_margin": 0.6,
+    "via_pitch": 1.0,
+    "via_d": 0.45,
+    "via_drill": 0.2,
+    "fan_y0": 1.0,
+    "via_y0": 6.0,
+    "via_row_gap": 1.5,
+    "back_y0": 1.0,
+    "stiffener_from": 4.0,
+    "conn_lib": "Connector_FFC-FPC.pretty",
+    "conn_footprint": "Hirose_FH12-16S-0.5SH_1x16-1MP_P0.50mm_Horizontal",
+    "conn_pad_pitch": 0.5,
+    "conn_pad_size": [
+      0.3,
+      1.3
+    ],
+    "conn_pad_offset": 1.85,
+    "conn_front": 4.9,
+    "conn_back": 3.0,
+    "conn_half_w": 7.05
   },
-  "taxels": 136,
+  "taxels": 132,
   "columns": 12,
   "rows": 14,
-  "inner_cuts": 132,
+  "inner_cuts": 131,
   "boards": {
     "Front": {
       "checks": {
-        "min_copper_clearance_mm": 0.2,
-        "worst_pair": [
+        "electrode_side_clearance_mm": 0.2493,
+        "electrode_side_worst": [
+          "ch7",
+          "ch8"
+        ],
+        "connector_side_clearance_mm": 0.2,
+        "connector_side_worst": [
           "ch0",
           "ch1"
         ],
-        "copper_to_edge_mm": 0.6,
+        "copper_to_edge_mm": 0.775,
         "copper_to_cut_mm": 1.0,
         "copper_inside_outline": true,
         "ok": true
@@ -44,33 +62,52 @@
         -170.5,
         -97.5,
         -5.0,
-        109.0
+        115.8
       ],
       "size_mm": [
         165.5,
-        206.5
+        213.3
       ],
       "channels": 12,
       "gerbers": [
-        "chest_left_Front-Edge_Cuts.gm1",
-        "chest_left_Front-F_Cu.gtl",
-        "chest_left_Front-F_Mask.gts",
-        "chest_left_Front-User_Comments.gbr",
+        "chest_left_Front-B_Cu.gbr",
+        "chest_left_Front-B_Mask.gbr",
+        "chest_left_Front-B_Paste.gbr",
+        "chest_left_Front-B_Silkscreen.gbr",
+        "chest_left_Front-Edge_Cuts.gbr",
+        "chest_left_Front-F_Cu.gbr",
+        "chest_left_Front-F_Mask.gbr",
+        "chest_left_Front-F_Paste.gbr",
+        "chest_left_Front-F_Silkscreen.gbr",
+        "chest_left_Front-NPTH-drl_map.gbr",
+        "chest_left_Front-NPTH.drl",
+        "chest_left_Front-PTH-drl_map.gbr",
+        "chest_left_Front-PTH.drl",
         "chest_left_Front-User_Eco1.gbr",
         "chest_left_Front-User_Eco2.gbr",
-        "chest_left_Front-job.gbrjob",
-        "chest_left_Front.drl"
+        "chest_left_Front-job.gbrjob"
       ],
-      "zip": "gerbers_Front.zip"
+      "zip": "gerbers_Front.zip",
+      "kicad_drc": {
+        "violations": {},
+        "unconnected": 0,
+        "schematic_parity": 0,
+        "ok": true
+      }
     },
     "Back": {
       "checks": {
-        "min_copper_clearance_mm": 0.2,
-        "worst_pair": [
+        "electrode_side_clearance_mm": 0.2494,
+        "electrode_side_worst": [
+          "ch2",
+          "ch3"
+        ],
+        "connector_side_clearance_mm": 0.2,
+        "connector_side_worst": [
           "ch0",
           "ch1"
         ],
-        "copper_to_edge_mm": 0.6,
+        "copper_to_edge_mm": 0.775,
         "copper_to_cut_mm": 1.0,
         "copper_inside_outline": true,
         "ok": true
@@ -79,24 +116,38 @@
         -170.5,
         -97.5,
         -5.0,
-        109.0
+        115.8
       ],
       "size_mm": [
         165.5,
-        206.5
+        213.3
       ],
       "channels": 14,
       "gerbers": [
-        "chest_left_Back-B_Cu.gbl",
-        "chest_left_Back-B_Mask.gbs",
-        "chest_left_Back-Edge_Cuts.gm1",
-        "chest_left_Back-User_Comments.gbr",
+        "chest_left_Back-B_Cu.gbr",
+        "chest_left_Back-B_Mask.gbr",
+        "chest_left_Back-B_Paste.gbr",
+        "chest_left_Back-B_Silkscreen.gbr",
+        "chest_left_Back-Edge_Cuts.gbr",
+        "chest_left_Back-F_Cu.gbr",
+        "chest_left_Back-F_Mask.gbr",
+        "chest_left_Back-F_Paste.gbr",
+        "chest_left_Back-F_Silkscreen.gbr",
+        "chest_left_Back-NPTH-drl_map.gbr",
+        "chest_left_Back-NPTH.drl",
+        "chest_left_Back-PTH-drl_map.gbr",
+        "chest_left_Back-PTH.drl",
         "chest_left_Back-User_Eco1.gbr",
         "chest_left_Back-User_Eco2.gbr",
-        "chest_left_Back-job.gbrjob",
-        "chest_left_Back.drl"
+        "chest_left_Back-job.gbrjob"
       ],
-      "zip": "gerbers_Back.zip"
+      "zip": "gerbers_Back.zip",
+      "kicad_drc": {
+        "violations": {},
+        "unconnected": 0,
+        "schematic_parity": 0,
+        "ok": true
+      }
     }
   }
 }

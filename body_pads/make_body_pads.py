@@ -5,12 +5,14 @@ make_body_pads.py - forearm / bicep / chest resistive tactile pads as FPCB pairs
 Follows the construction of the Flex-Glove paper (Murphy et al., CHI EA '25) and the
 hand pipeline in make_fpcbs.ipynb, applied to three larger body pads:
 
-  * two single-sided FPCBs per pad ("Front" = column electrodes on F.Cu,
-    "Back" = row electrodes on B.Cu) with a piezoresistive (Velostat) layer in between,
+  * two FPCBs per pad ("Front" = column electrodes on F.Cu, "Back" = row electrodes on
+    B.Cu) with a piezoresistive (Velostat) layer in between,
   * coverlay (F.Mask / B.Mask) opened over the sensing region so the electrodes touch
     the Velostat, adhesive (Eco1.User) in the ring between the outline and the opening,
-  * electrodes routed to a 16-pin 0.5 mm FFC tail along nested offset contours of the
-    sensing region (the paper's "inward extrusions" of the hand contour),
+  * electrodes routed along nested offset contours of the sensing region (the paper's
+    "inward extrusions" of the hand contour) to a tail, where - as in README Step 5 -
+    every trace ends in a via and a 16-pin 0.5 mm FFC connector sits on the opposite
+    side of the board,
   * inner cut-outs between taxels for flexibility (copper polygons buffered and
     subtracted from the coverlay opening, as in the paper),
   * at most 16 x 16 taxels per pad so the same 16 x 16 readout as the glove can be used.
@@ -18,10 +20,10 @@ hand pipeline in make_fpcbs.ipynb, applied to three larger body pads:
 Outputs per pad (body_pads/out/<pad>/):
   <pad>_Front.svg / <pad>_Back.svg     layer-grouped SVGs in the same convention as handFront.svg
   <pad>_Front.kicad_mod / _Back        footprints made with svg2mod exactly like the notebook does
-  <pad>_Front.kicad_pcb / _Back        complete boards (open in KiCad 10)
-  gerbers_Front/, gerbers_Back/ (+zip) Gerber + Excellon files plotted by kicad-cli
+  <pad>_Front.kicad_pcb / _Back        complete boards (vias + connector added with KiCad's python)
+  gerbers_Front/, gerbers_Back/ (+zip) full Gerber set + PTH/NPTH drill files plotted by kicad-cli
   <pad>_cut_template.svg               outline + inner cuts in mm, for laser cutting Velostat/silicone
-  pinout_Front.csv / pinout_Back.csv   FFC finger -> electrode mapping
+  pinout_Front.csv / pinout_Back.csv   connector pin -> electrode mapping
   <pad>_preview.png                    render of both boards
 """
 from __future__ import annotations
@@ -35,7 +37,7 @@ import shutil
 import subprocess
 import sys
 import zipfile
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 import numpy as np
 from shapely import affinity
@@ -52,6 +54,7 @@ KICAD_CLI_CANDIDATES = [
     "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli",
     "kicad-cli",
 ]
+GERBER_LAYERS = "F.Cu,B.Cu,F.Paste,B.Paste,F.SilkS,B.SilkS,F.Mask,B.Mask,Edge.Cuts,Eco1.User,Eco2.User"
 
 
 # --------------------------------------------------------------------------------------
@@ -70,16 +73,28 @@ class Params:
     cut_r: float = 2.0           # corner radius of inner cut-outs
     cut_margin: float = 2.5      # keep cut-outs this far inside the opening edge
     max_ch: int = 16             # channels per board (16-pin FFC, 16 x 16 readout)
-    tail_len: float = 14.0       # tail length beyond the body edge
-    tail_w: float = 9.0          # tail width for a 16-pin 0.5 mm ZIF (15 x 0.5 + 0.3 = 7.8 mm span)
-    finger_w: float = 0.3
-    finger_pitch: float = 0.5
-    finger_len: float = 4.0
-    finger_tip_gap: float = 0.6  # finger end to tail tip
-    tail_tip_r: float = 0.5      # tail tip corner radius
-    stiffener_len: float = 8.0   # from the tail tip
-    tail_sep: float = 14.0       # centre distance between the Front and Back tails
     edge_clear: float = 0.5      # copper to board edge (paper: 0.5 mm)
+    # --- tail: 0.5 mm bus -> staircase fan-out to 1.0 mm -> two staggered via rows ->
+    #     (other side) staircase back to the 0.5 mm pads of the FFC connector
+    tail_w: float = 17.0
+    tail_tip_r: float = 1.0
+    tail_tip_margin: float = 0.6
+    via_pitch: float = 1.0
+    via_d: float = 0.45          # README: 0.35 / 0.15; 0.45 / 0.2 is inside common flex limits
+    via_drill: float = 0.2
+    fan_y0: float = 1.0          # lowest front jog above the body edge
+    via_y0: float = 6.0          # first via row above the body edge
+    via_row_gap: float = 1.5
+    back_y0: float = 1.0         # lowest back jog above the second via row
+    stiffener_from: float = 4.0  # stiffener (Eco2.User) from here to the tail tip
+    conn_lib: str = "Connector_FFC-FPC.pretty"
+    conn_footprint: str = "Hirose_FH12-16S-0.5SH_1x16-1MP_P0.50mm_Horizontal"
+    conn_pad_pitch: float = 0.5
+    conn_pad_size: tuple = (0.3, 1.3)
+    conn_pad_offset: float = 1.85  # pad row to footprint origin
+    conn_front: float = 4.9        # origin to courtyard front (cable side)
+    conn_back: float = 3.0         # origin to courtyard rear (pad side)
+    conn_half_w: float = 7.05
 
     @property
     def lane_pitch(self):
@@ -90,6 +105,10 @@ class Params:
         # polyimide web left around an electrode strip when cut-outs are made
         return self.electrode_w + 2 * self.cut_clear + 0.4
 
+    @property
+    def tail_sep(self):
+        return self.tail_w + 4.0
+
 
 @dataclass
 class PadSpec:
@@ -99,6 +118,7 @@ class PadSpec:
     row_exit: str = "right"       # side where row electrodes leave the sensing region
     params: Params = field(default_factory=Params)
     notes: str = ""
+    front_tail_side: int = -1     # Front (column) tail at tail_x - tail_sep/2 (-1) or + tail_sep/2 (+1)
 
     def mirrored(self, name):
         return PadSpec(
@@ -108,6 +128,7 @@ class PadSpec:
             row_exit="left" if self.row_exit == "right" else "right",
             params=self.params,
             notes=self.notes,
+            front_tail_side=-self.front_tail_side,
         )
 
 
@@ -169,12 +190,6 @@ def hole_free(geom):
         out += hole_free(p.intersection(box(minx - 1, miny - 1, cx, maxy + 1)))
         out += hole_free(p.intersection(box(cx, miny - 1, maxx + 1, maxy + 1)))
     return out
-
-
-def longest_piece(geom):
-    pieces = [geom] if isinstance(geom, LineString) else [g for g in getattr(geom, "geoms", []) if isinstance(g, LineString)]
-    pieces = [g for g in pieces if not g.is_empty]
-    return max(pieces, key=lambda g: g.length) if pieces else None
 
 
 def ring_arc(ring: LineString, s_a: float, s_b: float, forward: bool):
@@ -256,26 +271,46 @@ class Channel:
     exit_pt: Point
     group: str = ""
     ring: int = -1
-    finger: int = -1
-    copper: Polygon = None
+    slot: int = -1           # bus / connector slot 0..15 (left to right at the tail)
+    via: tuple = None
+    copper: Polygon = None   # electrode-side copper (strip + trace + via pad)
+    copper_back: Polygon = None  # connector-side copper (via pad + track + connector pad)
     path: list = None
+    back_path: list = None
+    pin: int = -1            # connector pad number (filled in by kicad_post.py)
 
 
 @dataclass
 class Board:
     side: str                # "Front" or "Back"
     kind: str                # "col" or "row"
-    cu_layer: str
+    cu_layer: str            # electrode copper layer
     mask_layer: str
     tail_x: float
+    conn_layer: str = ""     # connector copper layer (the other one)
     outline: Polygon = None
     channels: list = field(default_factory=list)
-    dummy_fingers: list = field(default_factory=list)
     mask: list = field(default_factory=list)
     adhesive: list = field(default_factory=list)
     stiffener: Polygon = None
-    tail_tip_y: float = 0.0
+    tail: dict = field(default_factory=dict)
     checks: dict = field(default_factory=dict)
+    drc: dict = field(default_factory=dict)
+
+
+def tail_layout(P: Params, y_top):
+    """y levels of the tail (mm, y up), see Params."""
+    half = P.max_ch // 2
+    L = {"h": [y_top + P.fan_y0 + P.lane_pitch * (half - 1 - j) for j in range(half)]}   # outer jogs lowest
+    L["yA"] = y_top + P.via_y0
+    L["yB"] = L["yA"] + P.via_row_gap
+    # connector side: the narrow (0.5 mm) end is at the pads, so the nesting mirrors the front: inner jogs lowest
+    L["g"] = [L["yB"] + P.back_y0 + P.lane_pitch * j for j in range(half)]
+    L["y_pad"] = L["g"][-1] + P.lane_pitch + P.conn_pad_size[1] / 2 + P.trace_gap
+    L["conn_y"] = L["y_pad"] + P.conn_pad_offset
+    L["y_tip"] = L["conn_y"] + P.conn_front + P.tail_tip_margin
+    L["y_top"] = y_top
+    return L
 
 
 def make_grid(sensing, P: Params):
@@ -323,11 +358,18 @@ def electrodes(sensing, P: Params, kind, positions, row_exit):
 
 
 def route_board(board: Board, sensing, y_top, P: Params):
-    """Assign lanes/fingers and build copper.  Traces follow offset contours of the opening:
+    """Assign lanes/slots and build copper.  Traces follow offset contours of the opening:
     the exit closest to the tail (along the contour) takes the innermost lane; lanes fan
-    into the 0.5 mm fingers without crossing (see analysis in the README)."""
+    into the 0.5 mm bus without crossing, then a staircase fans the bus out to 1.0 mm,
+    two staggered via rows take the signals to the other side, and a mirrored staircase
+    brings them back to the 0.5 mm pads of the FFC connector."""
     chans = board.channels
     tail_x = board.tail_x
+    T = tail_layout(P, y_top)
+    board.tail = T
+    n_f = P.max_ch
+    half = n_f // 2
+
     ring0 = LineString(sensing.buffer(P.ring0, join_style="round").exterior.coords)
     Lr = ring0.length
     s_tail = ring0.project(Point(tail_x, y_top))
@@ -343,53 +385,62 @@ def route_board(board: Board, sensing, y_top, P: Params):
         ch._dist = min(d_f, Lr - d_f)
         arrive_x = t_fwd_x if ch._forward else -t_fwd_x
         ch.group = "L" if arrive_x > 0 else "R"   # moving +x at the tail = arriving from the left
+        if board.kind == "col" and abs(ch.exit_pt.x - tail_x) < (P.max_ch / 2) * P.lane_pitch + 1.5:
+            raise ValueError(f"{board.side}: electrode {ch.idx} leaves the opening under the tail bus "
+                             f"(x={ch.exit_pt.x:.1f}, tail at {tail_x:.1f}); move the tail or the grid")
 
     groupL = sorted([c for c in chans if c.group == "L"], key=lambda c: c._dist)
     groupR = sorted([c for c in chans if c.group == "R"], key=lambda c: c._dist)
     nL = len(groupL)
-    if nL + len(groupR) > P.max_ch:
-        raise ValueError(f"{board.side}: {nL + len(groupR)} electrodes exceed {P.max_ch} fingers")
+    if nL + len(groupR) > n_f:
+        raise ValueError(f"{board.side}: {nL + len(groupR)} electrodes exceed {n_f} connector pins")
     for k, ch in enumerate(groupL):
-        ch.ring, ch.finger = k, nL - 1 - k          # arrives from the left -> innermost takes the right-most L finger
+        ch.ring, ch.slot = k, nL - 1 - k           # arrives from the left -> innermost takes the right-most L slot
     for k, ch in enumerate(groupR):
-        ch.ring, ch.finger = k, nL + k              # arrives from the right -> innermost takes the left-most R finger
+        ch.ring, ch.slot = k, nL + k               # arrives from the right -> innermost takes the left-most R slot
 
-    n_f = P.max_ch
-    finger_x = lambda k: tail_x + (k - (n_f - 1) / 2) * P.finger_pitch
-    y_tip = y_top + P.tail_len
-    yf1 = y_tip - P.finger_tip_gap
-    yf0 = yf1 - P.finger_len
-    board.tail_tip_y = y_tip
+    bus_x = lambda k: tail_x + (k - (n_f - 1) / 2) * P.lane_pitch
+    via_x = lambda k: tail_x + (k - (n_f - 1) / 2) * P.via_pitch
+    jog = lambda k: int(abs(k - (n_f - 1) / 2) - 0.5)        # 0 = innermost .. half-1 = outermost
+    pw, pl = P.conn_pad_size
 
     rings = {}
     for ch in chans:
         if ch.ring not in rings:
             rings[ch.ring] = LineString(sensing.buffer(P.ring0 + ch.ring * P.lane_pitch, join_style="round").exterior.coords)
         ring = rings[ch.ring]
-        fx = finger_x(ch.finger)
+        k = ch.slot
+        j = jog(k)
+        bx, vx = bus_x(k), via_x(k)
+        vy = T["yA"] if k % 2 == 0 else T["yB"]
         s_in = ring.project(ch.exit_pt)
-        s_out = ring.project(Point(fx, y_top))
+        s_out = ring.project(Point(bx, y_top))
         arc = ring_arc(ring, s_in, s_out, ch._forward)
         p_out = arc[-1]
-        path = [(ch.exit_pt.x, ch.exit_pt.y)] + arc + [(fx, p_out[1]), (fx, yf0)]
+        path = [(ch.exit_pt.x, ch.exit_pt.y)] + arc + [(bx, p_out[1]), (bx, T["h"][j]), (vx, T["h"][j]), (vx, vy)]
         ch.path = path
+        ch.via = (vx, vy)
+        ch.back_path = [(vx, vy), (vx, T["g"][j]), (bx, T["g"][j]), (bx, T["y_pad"])]
         strip = ch.seg.buffer(P.electrode_w / 2, cap_style="round")
         trace = LineString(path).buffer(P.trace_w / 2, cap_style="flat", join_style="round")
-        finger = box(fx - P.finger_w / 2, yf0, fx + P.finger_w / 2, yf1)
-        ch.copper = unary_union([strip, trace, finger]).buffer(0)
+        via_pad = Point(vx, vy).buffer(P.via_d / 2)
+        ch.copper = unary_union([strip, trace, via_pad]).buffer(0)
+        back = LineString(ch.back_path).buffer(P.trace_w / 2, cap_style="flat", join_style="round")
+        pad = box(bx - pw / 2, T["y_pad"] - pl / 2, bx + pw / 2, T["y_pad"] + pl / 2)
+        ch.copper_back = unary_union([via_pad, back, pad]).buffer(0)
 
-    used = {c.finger for c in chans}
-    board.dummy_fingers = [box(finger_x(k) - P.finger_w / 2, yf0, finger_x(k) + P.finger_w / 2, yf1)
-                           for k in range(n_f) if k not in used]
+    # unconnected connector pads (fewer than 16 electrodes) only exist on the connector side
+    used = {c.slot for c in chans}
+    board.unused_pads = [box(bus_x(k) - pw / 2, T["y_pad"] - pl / 2, bus_x(k) + pw / 2, T["y_pad"] + pl / 2)
+                         for k in range(n_f) if k not in used]
+    # coverlay opening on the electrode side: the sensing region only (vias stay tented)
+    board.mask = [sensing]
+    # stiffener under the via field and the connector (Eco2.User)
+    board.stiffener = box(tail_x - P.tail_w / 2, y_top + P.stiffener_from, tail_x + P.tail_w / 2, T["y_tip"])
 
-    # coverlay openings: the sensing region + a window over the fingers
-    board.mask = [sensing, box(tail_x - P.tail_w / 2 + 0.3, yf0 - 0.5, tail_x + P.tail_w / 2 - 0.3, y_tip + 1.0)]
-    # stiffener on the far side of the tail (drawn on Eco2.User)
-    board.stiffener = box(tail_x - P.tail_w / 2, y_tip - P.stiffener_len, tail_x + P.tail_w / 2, y_tip)
 
-
-def make_outline(body, tail_x, y_top, P: Params):
-    tail = box(tail_x - P.tail_w / 2, y_top - 3.0, tail_x + P.tail_w / 2, y_top + P.tail_len)
+def make_outline(body, tail_x, y_top, P: Params, y_tip):
+    tail = box(tail_x - P.tail_w / 2, y_top - 3.0, tail_x + P.tail_w / 2, y_tip)
     tail = opening(tail, P.tail_tip_r)
     return closing(unary_union([body, tail]), 2.0)   # 2 mm fillet at the tail neck
 
@@ -415,25 +466,31 @@ def inner_cuts(sensing, xs, ys, copper_all, P: Params):
 
 def check_board(board: Board, cuts, P: Params):
     """Self-contained design-rule check with shapely (kicad-cli DRC is run separately)."""
-    items = [(f"ch{c.idx}", c.copper) for c in board.channels] + [(f"dummy{k}", d) for k, d in enumerate(board.dummy_fingers)]
-    min_clear, worst = 1e9, None
-    for a in range(len(items)):
-        for b in range(a + 1, len(items)):
-            d = items[a][1].distance(items[b][1])
-            if d < min_clear:
-                min_clear, worst = d, (items[a][0], items[b][0])
-    all_cu = unary_union([g for _, g in items])
-    edge = board.outline.exterior
-    edge_clear = all_cu.distance(edge)
+    def min_pair(items):
+        best, worst = 1e9, None
+        for a in range(len(items)):
+            for b in range(a + 1, len(items)):
+                d = items[a][1].distance(items[b][1])
+                if d < best:
+                    best, worst = d, (items[a][0], items[b][0])
+        return best, worst
+
+    front = [(f"ch{c.idx}", c.copper) for c in board.channels]
+    back = [(f"ch{c.idx}", c.copper_back) for c in board.channels] + [(f"nc{k}", p) for k, p in enumerate(board.unused_pads)]
+    f_clear, f_worst = min_pair(front)
+    b_clear, b_worst = min_pair(back)
+    all_cu = unary_union([g for _, g in front] + [g for _, g in back])
+    edge_clear = all_cu.distance(board.outline.exterior)
     cut_clear = min([all_cu.distance(c) for c in cuts], default=1e9)
     inside = all_cu.difference(board.outline).area < 1e-6
     board.checks = {
-        "min_copper_clearance_mm": round(min_clear, 4),
-        "worst_pair": worst,
+        "electrode_side_clearance_mm": round(f_clear, 4), "electrode_side_worst": f_worst,
+        "connector_side_clearance_mm": round(b_clear, 4), "connector_side_worst": b_worst,
         "copper_to_edge_mm": round(edge_clear, 4),
         "copper_to_cut_mm": round(cut_clear, 4),
         "copper_inside_outline": bool(inside),
-        "ok": bool(min_clear >= 0.19 and edge_clear >= P.edge_clear - 0.05 and cut_clear >= P.cut_clear - 0.05 and inside),
+        "ok": bool(min(f_clear, b_clear) >= P.trace_gap - 0.06 and edge_clear >= P.edge_clear - 0.05
+                   and cut_clear >= P.cut_clear - 0.05 and inside),
     }
     return board.checks
 
@@ -442,20 +499,28 @@ def build_pad(spec: PadSpec):
     P = spec.params
     body = spec.body
     y_top = body.bounds[3]
-    # the tails must sit on a straight top edge
-    for dx in (-P.tail_sep / 2 - P.tail_w / 2 - 6, P.tail_sep / 2 + P.tail_w / 2 + 6):
-        if not body.contains(Point(spec.tail_x + dx, y_top - 0.5)):
-            raise ValueError(f"{spec.name}: top edge not straight around the tail position")
-
     sensing = opening(body.buffer(-P.margin, join_style="round"), P.opening_r)
     xs, ys = make_grid(sensing, P)
+    T = tail_layout(P, y_top)
 
-    front = Board("Front", "col", "F.Cu", "F.Mask", tail_x=spec.tail_x - P.tail_sep / 2)
-    back = Board("Back", "row", "B.Cu", "B.Mask", tail_x=spec.tail_x + P.tail_sep / 2)
+    front_tail_x = spec.tail_x + spec.front_tail_side * P.tail_sep / 2
+    back_tail_x = spec.tail_x - spec.front_tail_side * P.tail_sep / 2
+    # the column electrodes leave the opening at the top: shift the column grid so that a gap
+    # between two columns sits under the Front tail's 0.5 mm bus (columns must not exit there)
+    gaps = [(a + b) / 2 for a, b in zip(xs[:-1], xs[1:])] or [xs[0]]
+    nearest_gap = min(gaps, key=lambda g: abs(g - front_tail_x))
+    xs = [x + (front_tail_x - nearest_gap) for x in xs]
+    for tx in (front_tail_x, back_tail_x):
+        for dx in (-(P.tail_w / 2 + 2.0), P.tail_w / 2 + 2.0):
+            if not body.contains(Point(tx + dx, y_top - 0.3)):
+                raise ValueError(f"{spec.name}: top edge must be straight around the tail at x={tx:.1f}")
+
+    front = Board("Front", "col", "F.Cu", "F.Mask", tail_x=front_tail_x, conn_layer="B.Cu")
+    back = Board("Back", "row", "B.Cu", "B.Mask", tail_x=back_tail_x, conn_layer="F.Cu")
     front.channels = electrodes(sensing, P, "col", xs, spec.row_exit)
     back.channels = electrodes(sensing, P, "row", ys, spec.row_exit)
     for b in (front, back):
-        b.outline = make_outline(body, b.tail_x, y_top, P)
+        b.outline = make_outline(body, b.tail_x, y_top, P, T["y_tip"])
         route_board(b, sensing, y_top, P)
         b.adhesive = hole_free(body.difference(sensing))
 
@@ -470,7 +535,7 @@ def build_pad(spec: PadSpec):
             if c.seg.buffer(P.electrode_w / 2).intersects(r.seg.buffer(P.electrode_w / 2)):
                 taxels += 1
     return dict(spec=spec, body=body, sensing=sensing, front=front, back=back, cuts=cuts,
-                taxels=taxels, xs=xs, ys=ys, y_top=y_top)
+                taxels=taxels, xs=xs, ys=ys, y_top=y_top, tail=T)
 
 
 # --------------------------------------------------------------------------------------
@@ -493,7 +558,8 @@ class Frame:
 
 
 def write_svg(pad, board: Board, frame: Frame, path):
-    """Same group/layer convention as handFront.svg so the notebook's create_kicad_mod() works."""
+    """Same group/layer convention as handFront.svg so the notebook's create_kicad_mod() works.
+    (Electrode-side layers only; vias and the connector are added to the .kicad_pcb.)"""
     import svgwrite
     dwg = svgwrite.Drawing(path)
     g_cu = dwg.g(id=board.cu_layer, fill="black", stroke="none")
@@ -505,8 +571,6 @@ def write_svg(pad, board: Board, frame: Frame, path):
     for ch in board.channels:
         for p in polys_of(ch.copper):
             g_cu.add(dwg.polygon(points=frame.px(p.exterior.coords), fill="black", stroke="none"))
-    for d in board.dummy_fingers:
-        g_cu.add(dwg.polygon(points=frame.px(d.exterior.coords), fill="black", stroke="none"))
     g_edge.add(dwg.polygon(points=frame.px(board.outline.exterior.coords), fill="black", stroke="none"))
     for c in pad["cuts"]:
         g_edge.add(dwg.polygon(points=frame.px(c.exterior.coords), fill="black", stroke="none"))
@@ -572,7 +636,7 @@ def kicad_poly(coords, layer, fill=True, width=0.0, net=None):
     return f'  (gr_poly (pts {pts}) (stroke (width {width}) (type solid)) (fill {fill_s}) (layer "{layer}"){net_s})\n'
 
 
-def write_kicad_pcb(pad, board: Board, frame: Frame, path, with_nets=True):
+def write_kicad_pcb(pad, board: Board, frame: Frame, path):
     spec = pad["spec"]
     lines = ['(kicad_pcb (version 20240108) (generator "make_body_pads") (generator_version "8.0")\n',
              "  (general (thickness 0.11) (legacy_teardrops no))\n",
@@ -591,15 +655,13 @@ def write_kicad_pcb(pad, board: Board, frame: Frame, path, with_nets=True):
              "  )\n",
              '  (net 0 "")\n']
     for i, ch in enumerate(board.channels):
-        lines.append(f'  (net {i + 1} "{board.kind.upper()}{ch.idx:02d}")\n')
+        lines.append(f'  (net {i + 1} "{net_name(board, ch)}")\n')
 
-    # copper
+    # electrode-side copper (the via pad itself is added as a real via by kicad_post.py)
     for i, ch in enumerate(board.channels):
         for p in hole_free(ch.copper):
-            lines.append(kicad_poly(frame.mm(p.exterior.coords), board.cu_layer, net=(i + 1) if with_nets else None))
-    for d in board.dummy_fingers:
-        lines.append(kicad_poly(frame.mm(d.exterior.coords), board.cu_layer))
-    # coverlay openings
+            lines.append(kicad_poly(frame.mm(p.exterior.coords), board.cu_layer, net=i + 1))
+    # coverlay openings on the electrode side
     for m in board.mask:
         for p in hole_free(m):
             lines.append(kicad_poly(frame.mm(p.exterior.coords), board.mask_layer))
@@ -612,15 +674,77 @@ def write_kicad_pcb(pad, board: Board, frame: Frame, path, with_nets=True):
     lines.append(kicad_poly(frame.mm(board.outline.exterior.coords), "Edge.Cuts", fill=False, width=0.05))
     for c in pad["cuts"]:
         lines.append(kicad_poly(frame.mm(c.exterior.coords), "Edge.Cuts", fill=False, width=0.05))
-    # a few notes on the fab layer
+    # fab notes
     x0, y0 = frame.mm([(board.outline.bounds[0], board.outline.bounds[1])])[0]
-    text = (f"{spec.name} {board.side}: 1-layer flex, copper on {board.cu_layer}. "
-            f"{board.mask_layer} = coverlay openings. Eco1.User = PSA adhesive (copper side). "
-            f"Eco2.User = tail stiffener (opposite side), total tail 0.30 +/-0.05 mm. 16-pin 0.5 mm FFC fingers.")
+    text = (f"{spec.name} {board.side}: 2-layer flex. Electrodes on {board.cu_layer} under the {board.mask_layer} "
+            f"opening; FFC connector J1 on {board.conn_layer}. Eco1.User = PSA adhesive on the {board.cu_layer} side. "
+            f"Eco2.User = stiffener under the connector (on the {board.cu_layer} side of the tail).")
     lines.append(f'  (gr_text "{text}" (at {x0:.2f} {y0 + 6:.2f}) (layer "Cmts.User") (effects (font (size 2 2) (thickness 0.3)) (justify left)))\n')
     lines.append(")\n")
     with open(path, "w", encoding="utf-8") as f:
         f.writelines(lines)
+
+
+def net_name(board: Board, ch: Channel):
+    return f"{board.kind.upper()}{ch.idx:02d}"
+
+
+def write_kicad_pro(path, P: Params):
+    """Project file with flex design rules (kicad-cli drc reads it from next to the board).
+    Mask bridges between electrodes are the sensing opening, so that check is ignored."""
+    pro = {
+        "board": {
+            "design_settings": {
+                "rules": {
+                    "min_clearance": round(P.trace_gap - 0.05, 3),
+                    "min_connection": 0.0,
+                    "min_copper_edge_clearance": round(P.edge_clear - 0.05, 3),
+                    "min_hole_clearance": 0.2,
+                    "min_hole_to_hole": 0.25,
+                    "min_microvia_diameter": 0.2,
+                    "min_microvia_drill": 0.1,
+                    "min_resolved_spokes": 0,
+                    "min_silk_clearance": 0.0,
+                    "min_text_height": 0.8,
+                    "min_text_thickness": 0.08,
+                    "min_through_hole_diameter": round(P.via_drill - 0.05, 3),
+                    "min_track_width": round(P.trace_w - 0.05, 3),
+                    "min_via_annular_width": 0.1,
+                    "min_via_diameter": round(P.via_d - 0.05, 3),
+                    "solder_mask_to_copper_clearance": 0.0,
+                    "use_height_for_length_calcs": True,
+                },
+                "rule_severities": {"solder_mask_bridge": "ignore"},
+            },
+        },
+        "meta": {"filename": os.path.basename(path), "version": 1},
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(pro, f, indent=2)
+
+
+def write_tail_json(pad, board: Board, frame: Frame, path, kicad_root):
+    """Everything kicad_post.py needs (KiCad frame, mm)."""
+    P = pad["spec"].params
+    T = board.tail
+    conn = frame.mm([(board.tail_x, T["conn_y"])])[0]
+    label = frame.mm([(board.tail_x, T["y_top"] + 2.0)])[0]
+    data = {
+        "cu_layer": board.cu_layer,
+        "conn_side": "B" if board.conn_layer == "B.Cu" else "F",
+        "footprint_lib": os.path.join(kicad_root, "share", "kicad", "footprints", P.conn_lib),
+        "footprint": P.conn_footprint,
+        "reference": "J1",
+        "conn_pos": list(conn),
+        "rotation": 0 if board.conn_layer == "B.Cu" else 180,
+        "via_d": P.via_d, "via_drill": P.via_drill, "track_w": P.trace_w,
+        "label": f"{pad['spec'].name} {board.side}",
+        "label_pos": list(label),
+        "channels": [{"net": net_name(board, ch), "via": list(frame.mm([ch.via])[0]),
+                      "back_path": frame.mm(ch.back_path)} for ch in board.channels],
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=1)
 
 
 def find_kicad_cli(explicit=None):
@@ -630,17 +754,34 @@ def find_kicad_cli(explicit=None):
     return None
 
 
-def export_gerbers(kicad_cli, pcb_path, board: Board, out_dir):
+def kicad_paths(kicad_cli):
+    bindir = os.path.dirname(os.path.abspath(shutil.which(kicad_cli) or kicad_cli))
+    root = os.path.dirname(bindir)
+    py = os.path.join(bindir, "python.exe" if os.name == "nt" else "python3")
+    if not os.path.isfile(py):
+        py = os.path.join(root, "Frameworks", "Python.framework", "Versions", "Current", "bin", "python3")
+    return root, py
+
+
+def run_kicad_post(kicad_py, pcb_path, json_path):
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kicad_post.py")
+    r = subprocess.run([kicad_py, script, pcb_path, json_path], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"kicad_post.py failed:\n{r.stdout}\n{r.stderr}")
+    return json.loads(r.stdout.strip().splitlines()[-1])
+
+
+def export_gerbers(kicad_cli, pcb_path, out_dir):
     if os.path.isdir(out_dir):
         shutil.rmtree(out_dir)
     os.makedirs(out_dir)
-    layers = ",".join([board.cu_layer, board.mask_layer, "Edge.Cuts", "Eco1.User", "Eco2.User", "Cmts.User"])
-    cmd = [kicad_cli, "pcb", "export", "gerbers", "--output", out_dir, "--layers", layers,
-           "--no-netlist", "--subtract-soldermask", pcb_path]
+    cmd = [kicad_cli, "pcb", "export", "gerbers", "--output", out_dir, "--layers", GERBER_LAYERS,
+           "--no-protel-ext", "--no-netlist", pcb_path]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError(f"kicad-cli gerbers failed:\n{r.stdout}\n{r.stderr}")
-    cmd = [kicad_cli, "pcb", "export", "drill", "--output", out_dir + os.sep, "--format", "excellon", pcb_path]
+    cmd = [kicad_cli, "pcb", "export", "drill", "--output", out_dir + os.sep, "--format", "excellon",
+           "--excellon-separate-th", "--generate-map", "--map-format", "gerberx2", pcb_path]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError(f"kicad-cli drill failed:\n{r.stdout}\n{r.stderr}")
@@ -652,6 +793,25 @@ def export_gerbers(kicad_cli, pcb_path, board: Board, out_dir):
         for fn in sorted(os.listdir(out_dir)):
             z.write(os.path.join(out_dir, fn), fn)
     return sorted(os.listdir(out_dir)), zip_path
+
+
+def run_drc(kicad_cli, pcb_path, report_path):
+    """KiCad DRC; 'solder_mask_bridge' between electrodes is the sensing opening and is expected."""
+    cmd = [kicad_cli, "pcb", "drc", "--output", report_path, "--severity-all", "--format", "json", pcb_path]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    prl = os.path.splitext(pcb_path)[0] + ".kicad_prl"
+    if os.path.isfile(prl):
+        os.remove(prl)
+    if not os.path.isfile(report_path):
+        raise RuntimeError(f"kicad-cli drc failed:\n{r.stdout}\n{r.stderr}")
+    with open(report_path, encoding="utf-8") as f:
+        rep = json.load(f)
+    counts = {}
+    for v in rep.get("violations", []):
+        counts[v["type"]] = counts.get(v["type"], 0) + 1
+    other = {k: n for k, n in counts.items() if k != "solder_mask_bridge"}
+    return {"violations": counts, "unconnected": len(rep.get("unconnected_items", [])),
+            "schematic_parity": len(rep.get("schematic_parity", [])), "ok": not other}
 
 
 def write_cut_template(pad, path):
@@ -674,21 +834,21 @@ def write_cut_template(pad, path):
 def write_pinout(board: Board, path):
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["finger(1=left when viewed from copper side, tail up)", "channel", "electrode_index", "electrode_pos_mm", "lane"])
-        by_finger = {c.finger: c for c in board.channels}
-        for k in range(16):
-            c = by_finger.get(k)
-            if c:
-                w.writerow([k + 1, f"{board.kind.upper()}{c.idx:02d}", c.idx, f"{c.pos:.2f}", c.ring])
-            else:
-                w.writerow([k + 1, "NC (dummy finger)", "", "", ""])
+        w.writerow(["J1 pin", "channel", "electrode_index", "electrode_pos_mm", "lane", "via_row"])
+        rows = sorted(board.channels, key=lambda c: c.pin if c.pin > 0 else 99)
+        for c in rows:
+            w.writerow([c.pin if c.pin > 0 else "?", net_name(board, c), c.idx, f"{c.pos:.2f}", c.ring, "A" if c.slot % 2 == 0 else "B"])
+        used = {c.pin for c in board.channels}
+        for k in range(1, 17):
+            if k not in used:
+                w.writerow([k, "NC", "", "", "", ""])
 
 
 def render(pad, path):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from matplotlib.patches import PathPatch
+    from matplotlib.patches import PathPatch, Rectangle
     from matplotlib.path import Path
 
     def patch(geom, **kw):
@@ -701,10 +861,13 @@ def render(pad, path):
         return PathPatch(Path(verts, codes), **kw)
 
     spec = pad["spec"]
+    P = spec.params
     front, back = pad["front"], pad["back"]
-    fig, axes = plt.subplots(1, 3, figsize=(22, 9))
-    panels = [(axes[0], [front], "Front FPCB (bottom board, columns on F.Cu)"),
-              (axes[1], [back], "Back FPCB (top board, rows on B.Cu)"),
+    fig = plt.figure(figsize=(24, 13))
+    gs = fig.add_gridspec(2, 3, height_ratios=[3.2, 1])
+    axes = [fig.add_subplot(gs[0, i]) for i in range(3)]
+    panels = [(axes[0], [front], "Front FPCB (bottom board, columns on F.Cu, J1 on B.Cu)"),
+              (axes[1], [back], "Back FPCB (top board, rows on B.Cu, J1 on F.Cu)"),
               (axes[2], [front, back], "Stack (both boards overlaid)")]
     colors = {"Front": "#d62728", "Back": "#1f77b4"}
     for ax, boards, title in panels:
@@ -716,7 +879,7 @@ def render(pad, path):
         for c in pad["cuts"]:
             ax.add_patch(patch(c, facecolor="white", edgecolor="k", lw=0.4))
         for b in boards:
-            cu = unary_union([c.copper for c in b.channels] + b.dummy_fingers)
+            cu = unary_union([c.copper for c in b.channels])
             ax.add_patch(patch(cu, facecolor=colors[b.side], edgecolor="none", alpha=0.85 if len(boards) == 1 else 0.7,
                                label=f"{b.side} copper ({b.kind}s)"))
             ax.add_patch(patch(b.stiffener, facecolor="none", edgecolor="green", lw=1.0, ls="--"))
@@ -728,12 +891,51 @@ def render(pad, path):
         ax.set_xlabel("mm")
         ax.grid(True, lw=0.3, alpha=0.5)
         ax.legend(loc="lower right", fontsize=8)
+
+    # tail close-ups (also saved on their own at a readable scale)
+    def draw_tail(ax, b):
+        T = b.tail
+        ax.add_patch(patch(b.outline, facecolor="#f3e9c9", edgecolor="k", lw=1.0))
+        ax.add_patch(patch(b.stiffener, facecolor="none", edgecolor="green", lw=1.0, ls="--", label="stiffener (Eco2)"))
+        ax.add_patch(patch(unary_union([c.copper for c in b.channels]), facecolor=colors[b.side], edgecolor="none", alpha=0.85,
+                           label=f"{b.cu_layer} electrode side"))
+        ax.add_patch(patch(unary_union([c.copper_back for c in b.channels] + b.unused_pads), facecolor="#2ca02c", edgecolor="none",
+                           alpha=0.6, label=f"{b.conn_layer} connector side"))
+        for c in b.channels:
+            ax.add_patch(patch(Point(c.via).buffer(P.via_drill / 2), facecolor="white", edgecolor="k", lw=0.3))
+        ax.add_patch(Rectangle((b.tail_x - P.conn_half_w, T["conn_y"] - P.conn_back), 2 * P.conn_half_w, P.conn_back + P.conn_front,
+                               facecolor="none", edgecolor="#555", lw=1.0, ls=":", label="J1 courtyard"))
+        ax.set_xlim(b.tail_x - P.tail_w / 2 - 3, b.tail_x + P.tail_w / 2 + 3)
+        ax.set_ylim(T["y_top"] - 12, T["y_tip"] + 2)
+        ax.set_aspect("equal")
+        ax.set_title(f"{b.side} tail: 0.5 mm bus -> vias -> FFC pads on {b.conn_layer}")
+        ax.grid(True, lw=0.3, alpha=0.5)
+        ax.legend(loc="lower left", fontsize=7)
+
+    tail_fig, tail_axes = plt.subplots(1, 2, figsize=(14, 9))
+    for i, b in enumerate((front, back)):
+        draw_tail(fig.add_subplot(gs[1, i]), b)
+        draw_tail(tail_axes[i], b)
+    tail_fig.suptitle(f"{spec.name} tails: 0.5 mm bus -> staircase to 1.0 mm -> vias -> staircase -> {P.conn_footprint}", fontsize=11)
+    tail_fig.tight_layout()
+    tail_fig.savefig(path.replace("_preview.png", "_tail.png"), dpi=110)
+    plt.close(tail_fig)
+    T = back.tail
+    ax = fig.add_subplot(gs[1, 2])
+    ax.axis("off")
+    ax.text(0, 1, "\n".join([
+        f"Taxel pitch {P.pitch} mm, electrode strips {P.electrode_w} mm, traces {P.trace_w}/{P.trace_gap} mm",
+        f"Vias {P.via_d}/{P.via_drill} mm in two rows at {P.via_pitch} mm pitch",
+        f"Connector: {P.conn_footprint}",
+        f"Tail {P.tail_w} x {T['y_tip'] - T['y_top']:.1f} mm, stiffener from +{P.stiffener_from} mm",
+        "Layers: F.Cu B.Cu F/B.Mask F/B.Paste F/B.SilkS Edge.Cuts Eco1 (adhesive) Eco2 (stiffener) + PTH drill",
+    ]), va="top", fontsize=10, family="monospace")
     W = pad["body"].bounds[2] - pad["body"].bounds[0]
     H = pad["body"].bounds[3] - pad["body"].bounds[1]
     fig.suptitle(f"{spec.name}: body {W:.0f} x {H:.0f} mm, {len(front.channels)} columns x {len(back.channels)} rows, "
                  f"{pad['taxels']} taxels at {spec.params.pitch} mm pitch, {len(pad['cuts'])} inner cut-outs", fontsize=14)
     fig.tight_layout()
-    fig.savefig(path, dpi=110)
+    fig.savefig(path, dpi=100)
     plt.close(fig)
 
 
@@ -743,14 +945,15 @@ def main():
     ap.add_argument("--pads", nargs="*", default=["forearm", "bicep", "chest_left", "chest_right"])
     ap.add_argument("--out", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "out"))
     ap.add_argument("--kicad-cli", default=None)
-    ap.add_argument("--no-gerbers", action="store_true", help="skip kicad-cli (still writes SVG/kicad_mod/kicad_pcb)")
+    ap.add_argument("--no-kicad", action="store_true", help="skip KiCad (no vias/connector/gerbers; still writes SVG/kicad_mod/kicad_pcb)")
     ap.add_argument("--no-mod", action="store_true", help="skip the svg2mod footprint step")
     args = ap.parse_args()
 
     specs = {s.name: s for s in all_specs()}
-    kicad_cli = None if args.no_gerbers else find_kicad_cli(args.kicad_cli)
-    if not args.no_gerbers and not kicad_cli:
-        print("kicad-cli not found: gerbers skipped (use --kicad-cli PATH)", file=sys.stderr)
+    kicad_cli = None if args.no_kicad else find_kicad_cli(args.kicad_cli)
+    if not args.no_kicad and not kicad_cli:
+        print("kicad-cli not found: vias, connector and gerbers skipped (use --kicad-cli PATH)", file=sys.stderr)
+    kicad_root, kicad_py = kicad_paths(kicad_cli) if kicad_cli else (None, None)
     summary = {}
     for name in args.pads:
         spec = specs[name]
@@ -766,18 +969,25 @@ def main():
             base = os.path.join(out, f"{name}_{b.side}")
             write_svg(pad, b, frame, base + ".svg")
             write_kicad_pcb(pad, b, frame, base + ".kicad_pcb")
-            write_pinout(b, os.path.join(out, f"pinout_{b.side}.csv"))
+            write_kicad_pro(base + ".kicad_pro", spec.params)
             if not args.no_mod:
                 svg_to_kicad_mod(base + ".svg", base + ".kicad_mod")
             binfo = {"checks": b.checks, "outline_mm": [round(v, 1) for v in b.outline.bounds],
                      "size_mm": [round(b.outline.bounds[2] - b.outline.bounds[0], 1), round(b.outline.bounds[3] - b.outline.bounds[1], 1)],
                      "channels": len(b.channels)}
             if kicad_cli:
-                files, zp = export_gerbers(kicad_cli, base + ".kicad_pcb", b, os.path.join(out, f"gerbers_{b.side}"))
-                binfo["gerbers"] = files
-                binfo["zip"] = os.path.basename(zp)
+                write_tail_json(pad, b, frame, base + "_tail.json", kicad_root)
+                pins = run_kicad_post(kicad_py, base + ".kicad_pcb", base + "_tail.json")
+                for ch in b.channels:
+                    ch.pin = pins["pads"].get(net_name(b, ch), -1)
+                files, zp = export_gerbers(kicad_cli, base + ".kicad_pcb", os.path.join(out, f"gerbers_{b.side}"))
+                b.drc = run_drc(kicad_cli, base + ".kicad_pcb", os.path.join(out, f"drc_{b.side}.json"))
+                binfo.update({"gerbers": files, "zip": os.path.basename(zp), "kicad_drc": b.drc})
+            write_pinout(b, os.path.join(out, f"pinout_{b.side}.csv"))
             info["boards"][b.side] = binfo
             print(f"   {b.side}: {len(b.channels)} ch, size {binfo['size_mm']} mm, checks {b.checks}")
+            if b.drc:
+                print(f"   {b.side}: KiCad DRC {b.drc}")
         write_cut_template(pad, os.path.join(out, f"{name}_cut_template.svg"))
         render(pad, os.path.join(out, f"{name}_preview.png"))
         with open(os.path.join(out, "summary.json"), "w", encoding="utf-8") as f:
