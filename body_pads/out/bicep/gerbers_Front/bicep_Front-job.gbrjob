@@ -5,17 +5,17 @@
       "Application": "Pcbnew",
       "Version": "10.0.5"
     },
-    "CreationDate": "2026-10-17T17:50:36+01:00"
+    "CreationDate": "2026-10-17T18:33:25+01:00"
   },
   "GeneralSpecs": {
     "ProjectId": {
       "Name": "bicep_Front",
       "GUID": "62696365-705f-4467-926f-6e742e6b6963",
-      "Revision": "rev?"
+      "Revision": "iter2"
     },
     "Size": {
-      "X": 228.3358,
-      "Y": 235.8237
+      "X": 198.3035,
+      "Y": 196.6899
     },
     "LayerNumber": 2,
     "BoardThickness": 0.11,

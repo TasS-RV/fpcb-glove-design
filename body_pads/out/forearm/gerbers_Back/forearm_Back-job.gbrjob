@@ -5,17 +5,17 @@
       "Application": "Pcbnew",
       "Version": "10.0.5"
     },
-    "CreationDate": "2026-10-17T17:50:31+01:00"
+    "CreationDate": "2026-10-17T18:33:20+01:00"
   },
   "GeneralSpecs": {
     "ProjectId": {
       "Name": "forearm_Back",
       "GUID": "666f7265-6172-46d5-9f42-61636b2e6b69",
-      "Revision": "rev?"
+      "Revision": "iter2"
     },
     "Size": {
-      "X": 197.6283,
-      "Y": 236.8931
+      "X": 240.972,
+      "Y": 230.7734
     },
     "LayerNumber": 2,
     "BoardThickness": 0.11,

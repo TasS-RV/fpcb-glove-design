@@ -110,6 +110,14 @@ arm/chest sensing idea: a forearm underside wrap, a bicep wrap that reaches roun
 chest pad made of two mirrored halves with a V neckline. The pads do not need a photo or MediaPipe - the
 outlines are parametric (`forearm_spec()`, `bicep_spec()`, `chest_left_spec()`), so sizes are edited in code.
 
+Iteration 2 (current, `ITERATION = "iter2"`): the forearm outline is digitised from a paper template wrapped
+round the wearer's forearm and photographed next to a ruler (`FOREARM_TEMPLATE_MM`, 29 px/cm): 240 mm round
+the arm at the elbow end (the template reaches ~20 mm past the elbow crease, where the tails sit), 210 mm
+long, narrowing to a 50 mm underside strap towards the wrist. The bicep pad is scaled to the same arm
+(~23 cm forearm circumference at the elbow -> ~27-28 cm upper arm): 180 mm long, 200 -> 175 mm wide. The
+chest halves are unchanged. To digitise a new template: photograph it flat with a ruler, threshold the paper,
+scale by the ruler and paste the outline into `FOREARM_TEMPLATE_MM` with the elbow end at y = 0.
+
 ```bash
 .\.venv\Scripts\python.exe body_pads\make_body_pads.py
 ```
@@ -141,8 +149,8 @@ Front and Back tails sit 21 mm apart; the Front connector faces down (B.Cu), the
 
 | pad | body (mm) | columns x rows | taxels | board incl. tail (mm) |
 |---|---|---|---|---|
-| forearm | 198 x 216 | 14 x 15 | 186 | 198 x 237 |
-| bicep | 228 x 215 | 15 x 14 | 192 | 228 x 236 |
+| forearm (template) | 241 x 210 | 16 x 14 | 132 | 241 x 231 |
+| bicep | 198 x 176 | 14 x 12 | 159 | 198 x 197 |
 | chest_left / chest_right | 165 x 193 each | 12 x 14 | 132 each | 166 x 213 |
 
 `make_body_pads.py` writes the electrode-side geometry itself, then calls `body_pads/kicad_post.py` with

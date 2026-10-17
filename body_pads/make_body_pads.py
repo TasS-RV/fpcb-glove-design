@@ -55,6 +55,7 @@ KICAD_CLI_CANDIDATES = [
     "kicad-cli",
 ]
 GERBER_LAYERS = "F.Cu,B.Cu,F.Paste,B.Paste,F.SilkS,B.SilkS,F.Mask,B.Mask,Edge.Cuts,Eco1.User,Eco2.User"
+ITERATION = "iter2"   # design iteration, written into the board title block and summary.json
 
 
 # --------------------------------------------------------------------------------------
@@ -211,30 +212,43 @@ def ring_arc(ring: LineString, s_a: float, s_b: float, forward: bool):
 # --------------------------------------------------------------------------------------
 # Pad outlines (mm, y up).  The tail(s) attach to the straight TOP edge at tail_x.
 # --------------------------------------------------------------------------------------
+# Iteration 2 forearm: outline digitised from the paper template the user wrapped round their
+# forearm (photo with ruler, 29 px/cm, 2026-10-17). x = around the arm, y = along it, elbow end
+# at y = 0 (the template reaches ~20 mm past the elbow crease), wrist strap at the bottom.
+# Marks on the template: 4 + 5 + 5 cm along the arm from the cross-line to the wrist end, 4 cm from
+# the cross-line to the elbow end, cross-line 18 cm, 6.5 cm from the axis to the top edge, 4.5 cm
+# wide wrist strap. The big lobe (x > 0) is the underside, the slanted side (x < 0) the top.
+FOREARM_TEMPLATE_MM = [
+    (-118, 0), (120, 0), (121, -25), (119, -48), (109, -89), (101, -100), (75, -104),
+    (45, -115), (36, -121), (23, -135), (18, -148), (12, -182), (7, -207), (-12, -210),
+    (-43, -209), (-53, -168), (-65, -134), (-75, -116), (-106, -75), (-118, -50), (-120, -32), (-118, -10),
+]
+
+
 def forearm_spec():
-    """Underside-of-forearm wrap. Elbow end at the top (tail), wrist end at the bottom with a
-    concave scoop so the pad clears the wrist crease ("stretches around for underside forces")."""
-    L, w_elbow, w_wrist, scoop, r = 220.0, 200.0, 150.0, 15.0, 10.0
-    pts = [(-w_elbow / 2, L / 2), (w_elbow / 2, L / 2), (w_wrist / 2, -L / 2)]
-    pts += arc_points((w_wrist / 2, -L / 2), (-w_wrist / 2, -L / 2), -scoop)  # concave: bulges up into the pad
-    pts += [(-w_wrist / 2, -L / 2)]
-    body = closing(opening(Polygon(pts), r), r)
+    """Forearm pad from the measured template (see FOREARM_TEMPLATE_MM). Elbow end at the top
+    (tails there, cable runs up the arm), 240 mm wrap at the elbow narrowing to the 50 mm
+    underside strap towards the wrist."""
+    body = closing(opening(Polygon(FOREARM_TEMPLATE_MM), 8.0), 12.0)
     return PadSpec("forearm", body, tail_x=0.0, row_exit="right",
-                   params=Params(pitch=12.5),
-                   notes="Forearm underside wrap, elbow end up. 220 mm long, 200 mm (elbow) to 150 mm (wrist) wide.")
+                   params=Params(pitch=13.5),
+                   notes="Forearm pad digitised from the paper template (iteration 2): 240 mm round the elbow end, "
+                         "210 mm long, 50 mm underside strap at the wrist end.")
 
 
 def bicep_spec():
     """Upper-arm wrap, wider at the shoulder end so it reaches round to the lateral side.
-    Shoulder end at the top (tail); concave scoop at the elbow end for the elbow crease."""
-    L, w_shoulder, w_elbow, scoop, r = 220.0, 230.0, 200.0, 20.0, 12.0
+    Shoulder end at the top (tail); concave scoop at the elbow end for the elbow crease.
+    Iteration 2: scaled to the arm measured by the forearm template (~23 cm forearm circumference
+    at the elbow -> ~27-28 cm upper arm, ~27 cm crease-to-armpit): 180 mm long, 200 -> 175 mm wide."""
+    L, w_shoulder, w_elbow, scoop, r = 180.0, 200.0, 175.0, 15.0, 12.0
     pts = [(-w_shoulder / 2, L / 2), (w_shoulder / 2, L / 2), (w_elbow / 2, -L / 2)]
     pts += arc_points((w_elbow / 2, -L / 2), (-w_elbow / 2, -L / 2), -scoop)   # concave elbow scoop
     pts += [(-w_elbow / 2, -L / 2)]
     body = closing(opening(Polygon(pts), r), r)
     return PadSpec("bicep", body, tail_x=0.0, row_exit="right",
-                   params=Params(pitch=13.5),
-                   notes="Bicep wrap, shoulder end up. 220 mm long, 230 mm (shoulder) to 200 mm (elbow) wide.")
+                   params=Params(pitch=12.5),
+                   notes="Bicep wrap, shoulder end up (iteration 2). 180 mm long, 200 mm (shoulder) to 175 mm (elbow) wide.")
 
 
 def chest_left_spec():
@@ -641,7 +655,7 @@ def write_kicad_pcb(pad, board: Board, frame: Frame, path):
     lines = ['(kicad_pcb (version 20240108) (generator "make_body_pads") (generator_version "8.0")\n',
              "  (general (thickness 0.11) (legacy_teardrops no))\n",
              '  (paper "A2")\n',
-             f'  (title_block (title "{spec.name} {board.side} FPCB") (comment 1 "{spec.notes}"))\n',
+             f'  (title_block (title "{spec.name} {board.side} FPCB") (rev "{ITERATION}") (comment 1 "{spec.notes}"))\n',
              f"  (layers\n{KICAD_LAYERS}\n  )\n",
              "  (setup (pad_to_mask_clearance 0) (allow_soldermask_bridges_in_footprints no)\n"
              "    (pcbplotparams (layerselection 0x00010fc_ffffffff) (plot_on_all_layers_selection 0x0000000_00000000)\n"
@@ -962,7 +976,7 @@ def main():
         frame = Frame(pad)
         out = os.path.join(args.out, name)
         os.makedirs(out, exist_ok=True)
-        info = {"notes": spec.notes, "params": vars(spec.params), "taxels": pad["taxels"],
+        info = {"iteration": ITERATION, "notes": spec.notes, "params": vars(spec.params), "taxels": pad["taxels"],
                 "columns": len(pad["front"].channels), "rows": len(pad["back"].channels),
                 "inner_cuts": len(pad["cuts"]), "boards": {}}
         for b in (pad["front"], pad["back"]):

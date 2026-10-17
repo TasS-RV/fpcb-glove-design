@@ -1,4 +1,4 @@
-(module svg2mod (layer F.Cu) (tedit 6AD3A769)
+(module svg2mod (layer F.Cu) (tedit 6AD3B172)
   (attr virtual)
   (descr "Converted using: make_body_pads.py")
   (tags svg2mod)

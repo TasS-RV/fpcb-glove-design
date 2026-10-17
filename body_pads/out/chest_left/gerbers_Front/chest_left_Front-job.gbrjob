@@ -5,13 +5,13 @@
       "Application": "Pcbnew",
       "Version": "10.0.5"
     },
-    "CreationDate": "2026-10-17T17:50:42+01:00"
+    "CreationDate": "2026-10-17T18:33:31+01:00"
   },
   "GeneralSpecs": {
     "ProjectId": {
       "Name": "chest_left_Front",
       "GUID": "63686573-745f-46c6-9566-745f46726f6e",
-      "Revision": "rev?"
+      "Revision": "iter2"
     },
     "Size": {
       "X": 165.526,
