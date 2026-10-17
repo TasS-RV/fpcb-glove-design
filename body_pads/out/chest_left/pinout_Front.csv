@@ -1,0 +1,17 @@
+"finger(1=left when viewed from copper side, tail up)",channel,electrode_index,electrode_pos_mm,lane
+1,COL00,0,-153.74,1
+2,COL01,1,-141.74,0
+3,COL02,2,-129.74,0
+4,COL03,3,-117.74,1
+5,COL04,4,-105.74,2
+6,COL05,5,-93.74,3
+7,COL06,6,-81.74,4
+8,COL07,7,-69.74,5
+9,COL08,8,-57.74,6
+10,COL09,9,-45.74,7
+11,COL10,10,-33.74,8
+12,COL11,11,-21.74,9
+13,NC (dummy finger),,,
+14,NC (dummy finger),,,
+15,NC (dummy finger),,,
+16,NC (dummy finger),,,

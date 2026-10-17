@@ -1,0 +1,102 @@
+{
+  "notes": "Left chest half. ~165 x 195 mm, V neckline notch, 10 mm sternum gap to the right half.",
+  "params": {
+    "pitch": 12.0,
+    "electrode_w": 3.0,
+    "trace_w": 0.25,
+    "trace_gap": 0.25,
+    "margin": 10.0,
+    "ring0": 1.0,
+    "opening_r": 3.0,
+    "cut_clear": 0.8,
+    "cut_r": 2.0,
+    "cut_margin": 2.5,
+    "max_ch": 16,
+    "tail_len": 14.0,
+    "tail_w": 9.0,
+    "finger_w": 0.3,
+    "finger_pitch": 0.5,
+    "finger_len": 4.0,
+    "finger_tip_gap": 0.6,
+    "tail_tip_r": 0.5,
+    "stiffener_len": 8.0,
+    "tail_sep": 14.0,
+    "edge_clear": 0.5
+  },
+  "taxels": 136,
+  "columns": 12,
+  "rows": 14,
+  "inner_cuts": 132,
+  "boards": {
+    "Front": {
+      "checks": {
+        "min_copper_clearance_mm": 0.2,
+        "worst_pair": [
+          "ch0",
+          "ch1"
+        ],
+        "copper_to_edge_mm": 0.6,
+        "copper_to_cut_mm": 1.0,
+        "copper_inside_outline": true,
+        "ok": true
+      },
+      "outline_mm": [
+        5.0,
+        -97.5,
+        170.5,
+        109.0
+      ],
+      "size_mm": [
+        165.5,
+        206.5
+      ],
+      "channels": 12,
+      "gerbers": [
+        "chest_right_Front-Edge_Cuts.gm1",
+        "chest_right_Front-F_Cu.gtl",
+        "chest_right_Front-F_Mask.gts",
+        "chest_right_Front-User_Comments.gbr",
+        "chest_right_Front-User_Eco1.gbr",
+        "chest_right_Front-User_Eco2.gbr",
+        "chest_right_Front-job.gbrjob",
+        "chest_right_Front.drl"
+      ],
+      "zip": "gerbers_Front.zip"
+    },
+    "Back": {
+      "checks": {
+        "min_copper_clearance_mm": 0.2,
+        "worst_pair": [
+          "ch0",
+          "ch1"
+        ],
+        "copper_to_edge_mm": 0.6,
+        "copper_to_cut_mm": 1.0,
+        "copper_inside_outline": true,
+        "ok": true
+      },
+      "outline_mm": [
+        5.0,
+        -97.5,
+        170.5,
+        109.0
+      ],
+      "size_mm": [
+        165.5,
+        206.5
+      ],
+      "channels": 14,
+      "gerbers": [
+        "chest_right_Back-B_Cu.gbl",
+        "chest_right_Back-B_Mask.gbs",
+        "chest_right_Back-Edge_Cuts.gm1",
+        "chest_right_Back-User_Comments.gbr",
+        "chest_right_Back-User_Eco1.gbr",
+        "chest_right_Back-User_Eco2.gbr",
+        "chest_right_Back-job.gbrjob",
+        "chest_right_Back.drl"
+      ],
+      "zip": "gerbers_Back.zip"
+    }
+  }
+}

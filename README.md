@@ -103,6 +103,58 @@ The engineer will likely reccomend you to put surface finish on because the copp
 ![PCB Options](assets/pcbOptions.png)
 
 
+## Body pads: forearm, bicep and chest (`body_pads/`)
+
+`body_pads/make_body_pads.py` applies the same construction to three larger pads for the care-robotics
+arm/chest sensing idea: a forearm underside wrap, a bicep wrap that reaches round to the lateral side, and a
+chest pad made of two mirrored halves with a V neckline. The pads do not need a photo or MediaPipe - the
+outlines are parametric (`forearm_spec()`, `bicep_spec()`, `chest_left_spec()`), so sizes are edited in code.
+
+```bash
+.\.venv\Scripts\python.exe body_pads\make_body_pads.py
+```
+
+What is kept from the glove design (Sec. 3.1 of the paper):
+
+- two single-sided FPCBs per pad, "Front" = column electrodes on F.Cu (bottom board), "Back" = row
+  electrodes on B.Cu (top board), Velostat between them, silicone outside;
+- coverlay (`F.Mask`/`B.Mask`) opened over the sensing region, adhesive (`Eco1.User`) in the ring between the
+  outline and the opening, both boards share one body outline;
+- connecting traces routed along nested inward offsets of the opening (the paper's 0.2 mm "inward
+  extrusions" of the hand contour), here 0.25 mm traces at 0.5 mm pitch in a 10 mm margin;
+- inner cut-outs for flexibility, made by buffering all copper (0.8 mm) and subtracting it from the cells
+  between electrodes, shared by both boards and by the Velostat/silicone cut template;
+- at most 16 x 16 electrodes per pad, so the glove's 16 x 16 readout and 16-pin 0.5 mm FFC path work unchanged.
+
+What is different, because the pads are large and bend gently:
+
+- electrodes are 3 mm strips instead of 0.1 mm lines, so each ~12-13 mm taxel has a real contact area;
+- traces are 0.25 mm wide (the paper found wider traces more than double the bend life);
+- each board ends in a 0.5 mm-pitch ZIF finger tail (16 fingers, 0.3 x 4 mm, 9 mm wide tail, stiffener
+  outline on `Eco2.User`) instead of a connector on the flex, so there are no vias and the boards are 1-layer.
+  The Front and Back tails sit 14 mm apart so both can plug into ZIFs on one readout board. Front fingers face
+  the copper (top) side, Back fingers the bottom side: use a top-contact and a bottom-contact 16-pin ZIF, or
+  a dual-contact one.
+
+| pad | body (mm) | columns x rows | taxels | board incl. tail (mm) |
+|---|---|---|---|---|
+| forearm | 198 x 216 | 14 x 15 | 184 | 198 x 230 |
+| bicep | 228 x 215 | 14 x 14 | 188 | 228 x 229 |
+| chest_left / chest_right | 165 x 193 each | 12 x 14 | 136 each | 166 x 207 |
+
+Per pad, `body_pads/out/<pad>/` contains the Front/Back SVGs (same layer groups as `handFront.svg`, so
+`create_kicad_mod()` in the notebook accepts them), the svg2mod `.kicad_mod` footprints, complete
+`.kicad_pcb` boards, `gerbers_Front/` and `gerbers_Back/` (+ `.zip`) plotted with `kicad-cli`, an Excellon
+drill file (empty - no holes), `pinout_*.csv` (finger -> electrode), `<pad>_cut_template.svg` (mm units, body
+outline + cut-outs for the Velostat and silicone), `<pad>_preview.png` and `summary.json` with the clearance
+checks (copper-copper >= 0.2 mm at the fingers / 0.25 mm elsewhere, copper-edge 0.6 mm, copper-cut 1.0 mm).
+
+Ordering notes (PCBWay flex quote, as in Step 6): 1 layer, 0.08-0.11 mm polyimide, rolled-annealed copper,
+coverlay with openings per the mask layer, PSA tape on the copper side in the `Eco1.User` area, polyimide
+stiffener under the tail per `Eco2.User` to a finished tail thickness of 0.30 +/- 0.05 mm, ENIG or hard gold
+on the tail fingers (bare copper elsewhere is fine). KiCad DRC reports "solder mask bridges" between the
+electrodes - that is the sensing opening and is intended.
+
 ## Known Issues
 
 During the final connection of traces, you may get the error "Multipolygon object has no attribute exterior". Decreasing the min_trace_spacing by 0.01 seems to avoid this error. 

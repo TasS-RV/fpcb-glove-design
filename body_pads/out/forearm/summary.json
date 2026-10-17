@@ -1,0 +1,102 @@
+{
+  "notes": "Forearm underside wrap, elbow end up. 220 mm long, 200 mm (elbow) to 150 mm (wrist) wide.",
+  "params": {
+    "pitch": 12.5,
+    "electrode_w": 3.0,
+    "trace_w": 0.25,
+    "trace_gap": 0.25,
+    "margin": 10.0,
+    "ring0": 1.0,
+    "opening_r": 3.0,
+    "cut_clear": 0.8,
+    "cut_r": 2.0,
+    "cut_margin": 2.5,
+    "max_ch": 16,
+    "tail_len": 14.0,
+    "tail_w": 9.0,
+    "finger_w": 0.3,
+    "finger_pitch": 0.5,
+    "finger_len": 4.0,
+    "finger_tip_gap": 0.6,
+    "tail_tip_r": 0.5,
+    "stiffener_len": 8.0,
+    "tail_sep": 14.0,
+    "edge_clear": 0.5
+  },
+  "taxels": 184,
+  "columns": 14,
+  "rows": 15,
+  "inner_cuts": 172,
+  "boards": {
+    "Front": {
+      "checks": {
+        "min_copper_clearance_mm": 0.2,
+        "worst_pair": [
+          "ch0",
+          "ch1"
+        ],
+        "copper_to_edge_mm": 0.6,
+        "copper_to_cut_mm": 1.0,
+        "copper_inside_outline": true,
+        "ok": true
+      },
+      "outline_mm": [
+        -98.8,
+        -106.1,
+        98.8,
+        124.0
+      ],
+      "size_mm": [
+        197.6,
+        230.1
+      ],
+      "channels": 14,
+      "gerbers": [
+        "forearm_Front-Edge_Cuts.gm1",
+        "forearm_Front-F_Cu.gtl",
+        "forearm_Front-F_Mask.gts",
+        "forearm_Front-User_Comments.gbr",
+        "forearm_Front-User_Eco1.gbr",
+        "forearm_Front-User_Eco2.gbr",
+        "forearm_Front-job.gbrjob",
+        "forearm_Front.drl"
+      ],
+      "zip": "gerbers_Front.zip"
+    },
+    "Back": {
+      "checks": {
+        "min_copper_clearance_mm": 0.2,
+        "worst_pair": [
+          "ch1",
+          "ch2"
+        ],
+        "copper_to_edge_mm": 0.6,
+        "copper_to_cut_mm": 1.0,
+        "copper_inside_outline": true,
+        "ok": true
+      },
+      "outline_mm": [
+        -98.8,
+        -106.1,
+        98.8,
+        124.0
+      ],
+      "size_mm": [
+        197.6,
+        230.1
+      ],
+      "channels": 15,
+      "gerbers": [
+        "forearm_Back-B_Cu.gbl",
+        "forearm_Back-B_Mask.gbs",
+        "forearm_Back-Edge_Cuts.gm1",
+        "forearm_Back-User_Comments.gbr",
+        "forearm_Back-User_Eco1.gbr",
+        "forearm_Back-User_Eco2.gbr",
+        "forearm_Back-job.gbrjob",
+        "forearm_Back.drl"
+      ],
+      "zip": "gerbers_Back.zip"
+    }
+  }
+}
